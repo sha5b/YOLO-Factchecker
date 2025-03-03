@@ -487,18 +487,76 @@ def process_video(session_id, video_path, results_dir):
                 except Exception as e:
                     logger.warning(f"Error getting segments at time {timestamp}: {str(e)}")
                 
-                # If we have matching segments, analyze them with the LLM
-                if matching_segments:
+                # Only perform LLM analysis when both facial expressions and valid transcript are available
+                if matching_segments and facial_expression_analysis:
                     for segment in matching_segments:
-                        # Verify segment has text
-                        if not segment.get('text'):
-                            logger.warning(f"Skipping segment with no text: {segment}")
+                        # Verify segment has meaningful text (not just placeholders or empty)
+                        segment_text = segment.get('text', '')
+                        
+                        # Skip if text is empty, too short, or contains placeholder messages
+                        if (not segment_text or 
+                            len(segment_text.strip()) < 5 or 
+                            "[No speech" in segment_text or 
+                            "No transcription" in segment_text):
+                            logger.warning(f"Skipping segment with insufficient text: {segment_text}")
                             continue
                             
-                        # Send to Ollama for analysis
+                        # Skip if the segment is a placeholder created by error handling
+                        if segment.get('id', 0) < 0:  # Placeholder segments have negative IDs
+                            logger.warning(f"Skipping placeholder segment: {segment}")
+                            continue
+                            
+                        # Send to Ollama for comprehensive analysis
                         segment_text = segment['text']
-                        logger.info(f"Analyzing segment at timestamp {timestamp:.2f}s with text: '{segment_text}'")
-                        prompt = f"Analyze this statement for factual accuracy: '{segment_text}'"
+                        
+                        # Create a detailed prompt that includes:
+                        # 1. Transcript content
+                        # 2. YOLO detections (what objects/people are visible)
+                        # 3. Facial expressions and body language if available
+                        
+                        # Get all detections for context
+                        detection_descriptions = []
+                        for det in detections:
+                            class_name = det['class_name']
+                            confidence = det['confidence']
+                            detection_descriptions.append(f"{class_name} (confidence: {confidence:.2f})")
+                        
+                        # Get facial expression and body language descriptions
+                        expression_descriptions = []
+                        if facial_expression_analysis:
+                            for i, expr in enumerate(facial_expression_analysis):
+                                expression = expr.get('expression', 'Unknown')
+                                expression_descriptions.append(f"Person {i+1}: {expression}")
+                        
+                        body_language_descriptions = []
+                        if body_language_analysis:
+                            for i, posture in enumerate(body_language_analysis):
+                                posture_type = posture.get('posture', 'Unknown')
+                                body_language_descriptions.append(f"Person {i+1}: {posture_type}")
+                        
+                        # Build comprehensive prompt
+                        prompt = f"""Analyze this video segment comprehensively:
+
+TIMESTAMP: {timestamp:.2f} seconds
+
+TRANSCRIPT: "{segment_text}"
+
+VISUAL ELEMENTS:
+- Detected objects: {', '.join(detection_descriptions) if detection_descriptions else 'None detected'}
+- People in frame: {len(facial_expression_analysis) if facial_expression_analysis else 0}
+
+PEOPLE ANALYSIS:
+- Facial expressions: {', '.join(expression_descriptions) if expression_descriptions else 'None detected'}
+- Body language: {', '.join(body_language_descriptions) if body_language_descriptions else 'None detected'}
+
+Please provide:
+1. A factual analysis of what is being said
+2. An interpretation of the visual elements and how they relate to the speech
+3. An assessment of the speaker's expressions and body language
+4. An overall analysis of what is happening in this moment of the video
+"""
+                        
+                        logger.info(f"Sending comprehensive analysis prompt for segment at timestamp {timestamp:.2f}s")
                         response = ollama_interface.generate(prompt)
                         
                         # Send LLM response to client

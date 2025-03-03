@@ -107,14 +107,19 @@ class VideoProcessor:
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
             
             try:
-                # Extract audio using ffmpeg with single thread to avoid multithreading issues
+                # Extract audio using ffmpeg with more conservative settings to avoid threading issues
                 command = [
                     "ffmpeg", "-i", self.video_path, 
                     "-vn", "-acodec", "pcm_s16le", 
                     "-ar", "16000", "-ac", "1", 
                     "-threads", "1",  # Use single thread to avoid multithreading issues
+                    "-filter_threads", "1",  # Single thread for filters
+                    "-filter_complex_threads", "1",  # Single thread for filter complex
+                    "-safe", "0",  # Avoid safety checks that might cause issues
                     "-f", "wav",  # Explicitly specify WAV format
-                    output_path, "-y", "-loglevel", "error"
+                    "-y",  # Overwrite output file if it exists
+                    "-loglevel", "error",  # Only show errors
+                    output_path
                 ]
                 
                 logger.info(f"Extracting audio to {output_path} using ffmpeg")

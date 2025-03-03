@@ -480,13 +480,33 @@ For English, we recommend using the `vosk-model-small-en-us-0.22` model.
         # Check if transcription is available
         if not hasattr(self, '_last_transcription') or self._last_transcription is None:
             logger.warning("No transcription available")
-            return []
+            # Create a placeholder segment for better error handling
+            placeholder_segment = {
+                'id': 0,
+                'start': max(0, timestamp - 2),
+                'end': timestamp + 2,
+                'text': "[No transcription available at this timestamp]",
+                'avg_logprob': 0.0,
+                'compression_ratio': 1.0,
+                'no_speech_prob': 1.0
+            }
+            return [placeholder_segment]
         
         # Check if there are any segments
         segments = self._last_transcription.get('segments', [])
         if not segments:
             logger.warning("Transcription has no segments")
-            return []
+            # Create a placeholder segment for better error handling
+            placeholder_segment = {
+                'id': 0,
+                'start': max(0, timestamp - 2),
+                'end': timestamp + 2,
+                'text': "[No speech segments found in transcription]",
+                'avg_logprob': 0.0,
+                'compression_ratio': 1.0,
+                'no_speech_prob': 1.0
+            }
+            return [placeholder_segment]
         
         # Find matching segments
         matching_segments = []
@@ -508,6 +528,46 @@ For English, we recommend using the `vosk-model-small-en-us-0.22` model.
                     continue
                     
                 matching_segments.append(segment)
+        
+        # If no matching segments were found, create a placeholder
+        if not matching_segments:
+            # Find the closest segment to provide context
+            closest_segment = None
+            min_distance = float('inf')
+            
+            for segment in segments:
+                start_time = segment.get('start', 0)
+                end_time = segment.get('end', 0)
+                
+                # Calculate distance to segment
+                if timestamp < start_time:
+                    distance = start_time - timestamp
+                elif timestamp > end_time:
+                    distance = timestamp - end_time
+                else:
+                    distance = 0  # Should not happen as we already checked for overlaps
+                
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_segment = segment
+            
+            # Create placeholder with reference to closest segment
+            if closest_segment:
+                placeholder_text = f"[No speech at timestamp {timestamp:.2f}s. Closest speech: \"{closest_segment.get('text', '')}\"]"
+            else:
+                placeholder_text = f"[No speech detected at timestamp {timestamp:.2f}s]"
+                
+            placeholder_segment = {
+                'id': -1,
+                'start': max(0, timestamp - 1),
+                'end': timestamp + 1,
+                'text': placeholder_text,
+                'avg_logprob': 0.0,
+                'compression_ratio': 1.0,
+                'no_speech_prob': 1.0
+            }
+            
+            matching_segments.append(placeholder_segment)
         
         return matching_segments
     

@@ -265,22 +265,24 @@ class YOLODetector:
             
             # Add highlight for person detections (potential faces with expressions)
             if class_name == 'person' and enhanced:
-                # Calculate more precise face area (top 20% of person, centered horizontally)
+                # Calculate more precise face area based on typical human proportions
                 person_width = x2 - x1
                 person_height = y2 - y1
                 
-                # Face is typically in the top portion of the person bounding box
-                # and narrower than the full body width
-                face_width = int(person_width * 0.6)  # Face is about 60% of body width
-                face_height = int(person_height * 0.2)  # Face is about 20% of body height
+                # Face is typically in the upper portion of the person bounding box
+                # For a standing/sitting person, face is about 1/7 to 1/8 of total height
+                # and positioned at the top ~1/8 of the body
+                face_width = int(person_width * 0.5)  # Face is about 50% of body width
+                face_height = int(person_height * 0.15)  # Face is about 15% of body height
                 
                 # Center the face horizontally
                 face_x1 = x1 + int((person_width - face_width) / 2)
                 face_x2 = face_x1 + face_width
                 
-                # Position at the top of the person bounding box
-                face_y1 = y1
-                face_y2 = y1 + face_height
+                # Position face at appropriate height (not at the very top)
+                # For most people in videos, face starts about 5-10% down from the top of the bounding box
+                face_y1 = y1 + int(person_height * 0.05)  # Start 5% down from top
+                face_y2 = face_y1 + face_height
                 
                 # Draw face highlight with a more visible style
                 cv2.rectangle(drawn_frame, (face_x1, face_y1), (face_x2, face_y2), 

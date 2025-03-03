@@ -82,27 +82,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 currentFrame.src = imageUrl;
                 currentFrame.alt = `Frame ${data.frame_idx}`;
                 
-                // Track individual persons outside the video frame
+                // Display only the current people in view
                 if (data.has_face && data.has_expression) {
                     // Get the person detections container
                     const personDetectionsContainer = document.getElementById('person-detections-container');
                     
+                    // Clear previous person cards
+                    personDetectionsContainer.innerHTML = '';
+                    
                     // Process each facial expression
                     if (data.facial_expressions && data.facial_expressions.length > 0) {
                         data.facial_expressions.forEach((expr, personIndex) => {
-                            // Create a unique ID for this person
-                            const personId = `person-${personIndex + 1}`;
+                            // Create a unique ID for this person in this frame
+                            const personId = `person-${data.frame_idx}-${personIndex}`;
                             
-                            // Check if this person already has a card
-                            let personCard = document.getElementById(personId);
-                            
-                            // If no card exists for this person, create one
-                            if (!personCard) {
-                                personCard = document.createElement('div');
-                                personCard.className = 'person-detection-card';
-                                personCard.id = personId;
-                                personDetectionsContainer.appendChild(personCard);
-                            }
+                            // Create a new card for this person
+                            const personCard = document.createElement('div');
+                            personCard.className = 'person-detection-card';
+                            personCard.id = personId;
+                            personDetectionsContainer.appendChild(personCard);
                             
                             // Get corresponding body language for this person if available
                             let bodyLanguage = null;
@@ -229,8 +227,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     }
                     
-                    // Highlight the current frame
-                    currentFrame.classList.add('highlight-frame');
+                    // No longer highlighting the frame to avoid dimming effect
+                    // currentFrame.classList.add('highlight-frame');
                 }
             
             // Clean up previous URL to avoid memory leaks

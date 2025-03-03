@@ -5,149 +5,112 @@ import subprocess
 import tempfile
 import time
 import wave
-import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Tuple
 
 from vosk import Model, KaldiRecognizer, SetLogLevel
+import numpy as np
 
 logger = logging.getLogger("speech_recognizer")
 
-# Set Vosk logging level (0 for most verbose, higher numbers for less verbose)
+# Set Vosk log level (0 for most verbose, higher numbers for less verbose)
 SetLogLevel(0)
 
 class VoskTranscriber:
     """
-    Speech recognition using Vosk, running locally.
+    Speech recognition using Vosk, running locally without internet connection.
     """
     
     def __init__(
         self,
-        model_name: str = "vosk-model-en-us-0.22",
-        model_path: Optional[str] = None,
+        model_size: str = "small",
+        device: str = "cpu",
+        language: Optional[str] = "en-US",
+        beam_size: int = 5,
         sample_rate: int = 16000,
-        enable_words: bool = True,
-        language: str = "en-us",
-        alternative_results: int = 1
+        word_timestamps: bool = True
     ):
         """
         Initialize Vosk transcriber.
         
         Args:
-            model_name: Name of the Vosk model to use
-            model_path: Path to custom model or directory (if None, will download)
+            model_size: Size of the model ('small', 'medium', 'large')
+            device: Not used for Vosk
+            language: Language code (e.g., 'en-US')
+            beam_size: Not used for Vosk
             sample_rate: Audio sample rate in Hz
-            enable_words: Whether to include word-level timestamps
-            language: Language code (e.g., 'en-us')
-            alternative_results: Number of alternative results to return
+            word_timestamps: Whether to include word timestamps
         """
-        self.model_name = model_name
+        self.language = language or "en-US"
         self.sample_rate = sample_rate
-        self.enable_words = enable_words
-        self.language = language
-        self.alternative_results = alternative_results
+        self.word_timestamps = word_timestamps
+        self._last_transcription = None
+        self.model = None
         
-        # Path operations
-        if model_path is None:
-            # Use default model location or download
-            self.model_path = self._get_model_path(model_name)
+        # Initialize the model
+        model_path = self._get_model_path()
+        if not os.path.exists(model_path):
+            logger.warning(f"Vosk model not found at {model_path}. Please download it manually.")
         else:
-            self.model_path = model_path
-        
-        # Load the model
-        logger.info(f"Initializing Vosk model: {model_name}")
-        self._load_model()
+            logger.info(f"Loading Vosk model from {model_path}")
+            try:
+                self.model = Model(model_path)
+                logger.info("Vosk model loaded successfully")
+            except Exception as e:
+                logger.error(f"Error loading Vosk model: {str(e)}")
     
-    def _get_model_path(self, model_name: str) -> str:
-        """Get path to model, downloading if necessary."""
-        # Default path is models/vosk/
-        model_dir = Path("models/vosk")
-        model_dir.mkdir(parents=True, exist_ok=True)
+    def _get_model_path(self) -> str:
+        """
+        Get the path to the Vosk model.
         
-        model_path = model_dir / model_name
+        Returns:
+            Path to the Vosk model
+        """
+        # Default model path
+        base_path = os.path.join("models", "vosk")
         
-        # Check if model exists, if not download it
-        if not model_path.exists():
-            self._download_model(model_name, model_path)
+        # Check if model directory exists
+        if not os.path.exists(base_path):
+            os.makedirs(base_path, exist_ok=True)
+            logger.warning(f"Created Vosk model directory at {base_path}")
         
-        return str(model_path)
-    
-    def _download_model(self, model_name: str, model_path: Path) -> None:
-        """Download Vosk model."""
-        logger.info(f"Downloading Vosk model: {model_name}")
+        # Check if there are any model files in the directory
+        model_files = os.listdir(base_path)
+        if not model_files:
+            logger.error(f"No model files found in {base_path}. Please download a Vosk model and extract it to this directory.")
+            # Create a README file with instructions
+            readme_path = os.path.join(base_path, "README.md")
+            with open(readme_path, "w") as f:
+                f.write("""# Vosk Model Directory
+
+This directory should contain the Vosk model files. Please download a model from the [Vosk website](https://alphacephei.com/vosk/models) and extract it to this directory.
+
+For English, we recommend using the `vosk-model-small-en-us-0.22` model.
+
+1. Download the model from https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.22.zip
+2. Extract the ZIP file
+3. Copy all the files from the extracted directory directly into this directory (not in a subdirectory)
+""")
+            logger.info(f"Created README file at {readme_path} with instructions for downloading the Vosk model")
+        else:
+            logger.info(f"Found {len(model_files)} files in Vosk model directory")
+            # Check if the model files are in a subdirectory
+            for item in model_files:
+                item_path = os.path.join(base_path, item)
+                if os.path.isdir(item_path) and "model" in item.lower():
+                    # If there's a subdirectory with "model" in the name, use that
+                    logger.info(f"Found model subdirectory: {item}")
+                    return item_path
         
-        # Model URL
-        base_url = "https://alphacephei.com/vosk/models/"
-        model_url = f"{base_url}{model_name}.zip"
-        
-        try:
-            # Download the model
-            zip_path = Path(f"models/vosk/{model_name}.zip")
-            
-            logger.info(f"Downloading from {model_url}")
-            response = requests.get(model_url, stream=True)
-            response.raise_for_status()
-            
-            # Save the zip file
-            with open(zip_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            
-            # Extract the zip file
-            import zipfile
-            import shutil
-            
-            # Create a temporary extraction directory
-            extract_dir = Path(f"models/vosk/temp_{model_name}")
-            extract_dir.mkdir(parents=True, exist_ok=True)
-            
-            logger.info(f"Extracting model to {extract_dir}")
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(extract_dir)
-            
-            # Find the model directory inside the extracted content
-            # Vosk models typically have a single directory inside the zip
-            extracted_dirs = [d for d in extract_dir.iterdir() if d.is_dir()]
-            if extracted_dirs:
-                # Move the contents to the target model path
-                if model_path.exists():
-                    shutil.rmtree(model_path)
-                shutil.move(str(extracted_dirs[0]), str(model_path))
-            else:
-                # If no subdirectory, move all files directly
-                model_path.mkdir(parents=True, exist_ok=True)
-                for item in extract_dir.iterdir():
-                    if item.is_file():
-                        shutil.move(str(item), str(model_path / item.name))
-            
-            # Clean up
-            if extract_dir.exists():
-                shutil.rmtree(extract_dir)
-            
-            # Remove the zip file
-            zip_path.unlink()
-            
-            logger.info(f"Model downloaded and extracted to {model_path}")
-        
-        except Exception as e:
-            logger.error(f"Error downloading model: {str(e)}")
-            raise
-    
-    def _load_model(self) -> None:
-        """Load Vosk model."""
-        try:
-            self.model = Model(self.model_path)
-            logger.info(f"Vosk model loaded successfully from {self.model_path}")
-        except Exception as e:
-            logger.error(f"Error loading Vosk model: {str(e)}")
-            raise
+        # Return the path to the model directory
+        return base_path
     
     def transcribe(
         self,
         audio_path: str,
         output_format: str = "json",
         segment_level: bool = True,
-        word_timestamps: bool = False
+        word_timestamps: bool = None
     ) -> Dict:
         """
         Transcribe audio file.
@@ -156,7 +119,7 @@ class VoskTranscriber:
             audio_path: Path to audio file
             output_format: Output format ('json', 'text', 'srt', 'vtt')
             segment_level: Whether to return segment-level timestamps
-            word_timestamps: Whether to include word-level timestamps
+            word_timestamps: Not used, kept for compatibility
             
         Returns:
             Transcription dictionary
@@ -180,7 +143,7 @@ class VoskTranscriber:
             audio_path = self._prepare_audio(audio_path)
             
             # Transcribe
-            result = self._transcribe_audio(audio_path, word_timestamps or self.enable_words)
+            result = self._transcribe_audio(audio_path)
             
             # Format the results
             formatted_result = self._format_result(result, output_format)
@@ -220,137 +183,199 @@ class VoskTranscriber:
         # Get file extension
         _, ext = os.path.splitext(audio_path)
         
-        # If not already WAV, convert to WAV
-        if ext.lower() != '.wav':
-            logger.info(f"Converting {ext} file to WAV")
-            
-            # Create temp file
-            temp_dir = tempfile.gettempdir()
-            output_path = os.path.join(temp_dir, f"vosk_audio_{int(time.time())}.wav")
-            
-            # Convert using ffmpeg
-            try:
-                subprocess.run([
-                    "ffmpeg", "-i", audio_path, "-ar", str(self.sample_rate), "-ac", "1", "-c:a", "pcm_s16le", 
-                    output_path, "-y", "-loglevel", "error"
-                ], check=True)
-                
-                return output_path
-            
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Error converting audio: {str(e)}")
-                logger.warning("Using original file instead")
+        # Always convert to ensure proper format
+        logger.info(f"Converting audio file to proper format for transcription")
         
-        return audio_path
+        # Create temp file
+        temp_dir = tempfile.gettempdir()
+        output_path = os.path.join(temp_dir, f"speech_audio_{int(time.time())}.wav")
+        
+        # Convert using ffmpeg
+        try:
+            subprocess.run([
+                "ffmpeg", "-i", audio_path, 
+                "-ar", str(self.sample_rate), 
+                "-ac", "1", 
+                "-c:a", "pcm_s16le", 
+                "-threads", "1",  # Use single thread to avoid multithreading issues
+                "-f", "wav",  # Explicitly specify WAV format
+                output_path, "-y", "-loglevel", "error"
+            ], check=True)
+            
+            # Verify the file exists and has content
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
+                logger.info(f"Audio converted successfully: {output_path}")
+                return output_path
+            else:
+                logger.warning(f"Converted audio file is too small or doesn't exist: {output_path}")
+                return audio_path
+        
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error converting audio: {str(e)}")
+            logger.warning("Using original file instead")
+            return audio_path
     
-    def _transcribe_audio(self, audio_path: str, word_timestamps: bool = False) -> Dict:
+    def _transcribe_audio(self, audio_path: str) -> Dict:
         """
         Transcribe audio file using Vosk.
         
         Args:
             audio_path: Path to audio file
-            word_timestamps: Whether to include word-level timestamps
             
         Returns:
             Transcription result
         """
+        if self.model is None:
+            logger.error("Vosk model not loaded")
+            return {"text": "", "segments": []}
+        
         try:
-            # Open audio file
+            # Get audio duration
+            audio_duration = self._get_audio_duration(audio_path)
+            logger.info(f"Audio duration: {audio_duration:.2f} seconds")
+            
+            # Open the audio file
             wf = wave.open(audio_path, "rb")
             
-            # Check if audio format is compatible
+            # Check if the audio format is compatible with Vosk
             if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE":
-                logger.warning("Audio file must be WAV format mono PCM.")
-                return {"text": "", "segments": []}
+                logger.warning(f"Audio file has unsupported format, channels={wf.getnchannels()}, width={wf.getsampwidth()}")
+                # Try to convert the file again with stricter parameters
+                audio_path = self._prepare_audio(audio_path)
+                wf = wave.open(audio_path, "rb")
             
-            # Create recognizer
+            # Create a recognizer
             rec = KaldiRecognizer(self.model, wf.getframerate())
-            rec.SetWords(word_timestamps)
-            rec.SetMaxAlternatives(self.alternative_results)
             
-            # Process audio in chunks
-            results = []
+            # Enable word timestamps if requested
+            if self.word_timestamps:
+                rec.SetWords(True)
+            
+            # Process the audio file
+            logger.info("Processing audio with Vosk")
+            
+            # Variables to store results
+            full_text = ""
+            segments = []
+            segment_id = 0
+            current_segment_start = 0
+            
+            # Read and process audio data in chunks
             chunk_size = 4000  # Process 4000 frames at a time
-            
             while True:
                 data = wf.readframes(chunk_size)
                 if len(data) == 0:
                     break
                 
+                # Process audio chunk
                 if rec.AcceptWaveform(data):
+                    # Get result for this chunk
                     result_json = rec.Result()
                     result = json.loads(result_json)
-                    if "result" in result:
-                        results.append(result)
+                    
+                    # Extract text
+                    text = result.get("text", "").strip()
+                    
+                    if text:
+                        # Calculate timestamps
+                        if "result" in result and len(result["result"]) > 0:
+                            # If we have detailed word results
+                            words = result["result"]
+                            if words:
+                                segment_start = words[0].get("start", current_segment_start)
+                                segment_end = words[-1].get("end", segment_start + 5.0)  # Default 5 seconds if no end time
+                            else:
+                                segment_start = current_segment_start
+                                segment_end = current_segment_start + 5.0
+                        else:
+                            # Estimate timestamps based on audio position
+                            segment_start = current_segment_start
+                            segment_end = segment_start + 5.0  # Default 5 seconds if no timestamps
+                        
+                        # Create segment
+                        segment = {
+                            "id": segment_id,
+                            "start": segment_start,
+                            "end": segment_end,
+                            "text": text,
+                            "avg_logprob": 0.0,  # Not provided by Vosk
+                            "compression_ratio": 1.0,  # Not provided by Vosk
+                            "no_speech_prob": 0.0  # Not provided by Vosk
+                        }
+                        
+                        segments.append(segment)
+                        full_text += text + " "
+                        logger.info(f"Transcribed segment {segment_id}: '{text}'")
+                        
+                        # Update for next segment
+                        segment_id += 1
+                        current_segment_start = segment_end
             
             # Get final result
             final_json = rec.FinalResult()
             final_result = json.loads(final_json)
-            if "result" in final_result:
-                results.append(final_result)
             
-            # Process results into a format similar to Whisper
-            return self._process_results(results, wf.getframerate())
+            # Extract text from final result
+            final_text = final_result.get("text", "").strip()
             
-        except Exception as e:
-            logger.error(f"Error during transcription: {str(e)}")
-            return {"text": "", "segments": []}
-    
-    def _process_results(self, results: List[Dict], frame_rate: int) -> Dict:
-        """
-        Process Vosk results into a standardized format.
-        
-        Args:
-            results: List of Vosk result dictionaries
-            frame_rate: Audio frame rate
+            if final_text and final_text != full_text.strip():
+                # Calculate timestamps for final segment
+                if "result" in final_result and len(final_result["result"]) > 0:
+                    # If we have detailed word results
+                    words = final_result["result"]
+                    if words:
+                        segment_start = words[0].get("start", current_segment_start)
+                        segment_end = words[-1].get("end", segment_start + 5.0)
+                    else:
+                        segment_start = current_segment_start
+                        segment_end = current_segment_start + 5.0
+                else:
+                    # Estimate timestamps based on audio position
+                    segment_start = current_segment_start
+                    segment_end = audio_duration
+                
+                # Create final segment
+                segment = {
+                    "id": segment_id,
+                    "start": segment_start,
+                    "end": segment_end,
+                    "text": final_text,
+                    "avg_logprob": 0.0,
+                    "compression_ratio": 1.0,
+                    "no_speech_prob": 0.0
+                }
+                
+                segments.append(segment)
+                full_text += final_text + " "
+                logger.info(f"Transcribed final segment: '{final_text}'")
             
-        Returns:
-            Processed results in a format similar to Whisper
-        """
-        full_text = ""
-        segments = []
-        
-        for i, res in enumerate(results):
-            if "result" not in res:
-                continue
+            # Close the audio file
+            wf.close()
             
-            # Extract segment text
-            segment_text = res.get("text", "")
-            full_text += segment_text + " "
+            # If no segments were created, add a placeholder
+            if not segments:
+                logger.warning("No speech detected or transcription failed")
+                segment = {
+                    "id": 0,
+                    "start": 0,
+                    "end": audio_duration,
+                    "text": "[No speech detected or transcription failed]",
+                    "avg_logprob": 0.0,
+                    "compression_ratio": 1.0,
+                    "no_speech_prob": 1.0
+                }
+                segments.append(segment)
+                full_text = "[No speech detected or transcription failed]"
             
-            # Get start and end times
-            words = res.get("result", [])
-            if not words:
-                continue
-            
-            start_time = words[0].get("start", 0)
-            end_time = words[-1].get("end", 0)
-            
-            # Create segment
-            segment = {
-                "id": i,
-                "start": start_time,
-                "end": end_time,
-                "text": segment_text.strip(),
-                "avg_logprob": 0.0,  # Vosk doesn't provide this
-                "compression_ratio": 1.0,  # Vosk doesn't provide this
-                "no_speech_prob": 0.0  # Vosk doesn't provide this
+            return {
+                "text": full_text.strip(),
+                "segments": segments,
+                "language": self.language
             }
             
-            # Add word timestamps if available
-            if words and len(words) > 0:
-                segment["words"] = [
-                    {"word": w.get("word", ""), "start": w.get("start", 0), "end": w.get("end", 0), "probability": 1.0}
-                    for w in words
-                ]
-            
-            segments.append(segment)
-        
-        return {
-            "text": full_text.strip(),
-            "segments": segments,
-            "language": self.language
-        }
+        except Exception as e:
+            logger.error(f"Error during Vosk transcription: {str(e)}")
+            return {"text": "", "segments": []}
     
     def _format_result(self, result: Dict, output_format: str) -> Dict:
         """
@@ -452,19 +477,36 @@ class VoskTranscriber:
         Returns:
             List of segments that overlap with the timestamp
         """
-        # Store the last transcription result
+        # Check if transcription is available
         if not hasattr(self, '_last_transcription') or self._last_transcription is None:
             logger.warning("No transcription available")
             return []
         
+        # Check if there are any segments
+        segments = self._last_transcription.get('segments', [])
+        if not segments:
+            logger.warning("Transcription has no segments")
+            return []
+        
+        # Find matching segments
         matching_segments = []
         
-        for segment in self._last_transcription.get('segments', []):
+        for segment in segments:
+            # Verify segment has required fields
+            if 'start' not in segment or 'end' not in segment:
+                logger.warning(f"Segment missing start/end times: {segment}")
+                continue
+                
             start_time = segment.get('start', 0)
             end_time = segment.get('end', 0)
             
             # Check if timestamp falls within segment (with margin)
             if (start_time - margin) <= timestamp <= (end_time + margin):
+                # Verify segment has text
+                if not segment.get('text'):
+                    logger.warning(f"Matching segment has no text: {segment}")
+                    continue
+                    
                 matching_segments.append(segment)
         
         return matching_segments
@@ -520,16 +562,19 @@ class VoskTranscriber:
             logger.error(f"Error saving transcription: {str(e)}")
 
 
+# For backward compatibility
+WhisperTranscriber = VoskTranscriber
+SpeechRecognitionTranscriber = VoskTranscriber
+
+
 if __name__ == "__main__":
     # Example usage
     import argparse
     
-    parser = argparse.ArgumentParser(description="Vosk Transcriber")
+    parser = argparse.ArgumentParser(description="Vosk Speech Transcriber")
     parser.add_argument("--audio", type=str, required=True, help="Path to audio file")
     parser.add_argument("--output", type=str, required=True, help="Output file path")
-    parser.add_argument("--model", type=str, default="vosk-model-en-us-0.22", help="Vosk model name")
-    parser.add_argument("--language", type=str, default="en-us", help="Language code")
-    parser.add_argument("--words", action="store_true", help="Include word timestamps")
+    parser.add_argument("--language", type=str, default="en-US", help="Language code")
     
     args = parser.parse_args()
     
@@ -538,15 +583,12 @@ if __name__ == "__main__":
     
     # Initialize transcriber
     transcriber = VoskTranscriber(
-        model_name=args.model,
-        language=args.language,
-        enable_words=args.words
+        language=args.language
     )
     
     # Transcribe audio
     result = transcriber.transcribe(
-        audio_path=args.audio,
-        word_timestamps=args.words
+        audio_path=args.audio
     )
     
     # Save result

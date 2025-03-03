@@ -27,7 +27,6 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Create other necessary directories
 os.makedirs('static/results', exist_ok=True)
 os.makedirs('models/yolo', exist_ok=True)
-os.makedirs('models/vosk', exist_ok=True)
 os.makedirs('data/knowledge_base', exist_ok=True)
 os.makedirs('data/processed', exist_ok=True)
 
@@ -45,12 +44,13 @@ else:
             "img_size": 640,
             "sample_rate": 5  # Process every Nth frame
         },
-        "vosk": {
-            "model_name": "vosk-model-en-us-0.22",
+        "speech_recognition": {
+            "language": "en-US",
             "sample_rate": 16000,
-            "enable_words": True,
-            "language": "en-us",
-            "alternative_results": 1
+            "model_size": "small",  # Kept for compatibility
+            "device": "cpu",        # Kept for compatibility
+            "beam_size": 5,         # Kept for compatibility
+            "word_timestamps": True # Kept for compatibility
         },
         "ollama": {
             "base_url": "http://localhost:11434",
@@ -66,7 +66,7 @@ else:
 # Import custom modules
 from src.video_processor import VideoProcessor
 from src.yolo_detector import YOLODetector
-from src.speech_recognizer import VoskTranscriber
+from src.speech_recognizer import SpeechRecognitionTranscriber
 from src.ollama_interface import OllamaInterface
 
 # Initialize components (lazy loading)
@@ -89,13 +89,15 @@ def initialize_components():
             )
         
         if transcriber is None:
-            logger.info("Initializing Vosk transcriber")
-            transcriber = VoskTranscriber(
-                model_name=config["vosk"]["model_name"],
-                sample_rate=config["vosk"]["sample_rate"],
-                enable_words=config["vosk"]["enable_words"],
-                language=config["vosk"]["language"],
-                alternative_results=config["vosk"]["alternative_results"]
+            logger.info("Initializing Speech Recognition transcriber")
+            transcriber = SpeechRecognitionTranscriber(
+                language=config["speech_recognition"]["language"],
+                sample_rate=config["speech_recognition"]["sample_rate"],
+                # The following parameters are kept for compatibility
+                model_size=config["speech_recognition"]["model_size"],
+                device=config["speech_recognition"]["device"],
+                beam_size=config["speech_recognition"]["beam_size"],
+                word_timestamps=config["speech_recognition"]["word_timestamps"]
             )
         
         if ollama_interface is None:
@@ -240,6 +242,7 @@ def process_audio(session_id, audio_path):
     """Process audio for transcription"""
     try:
         # Transcribe audio
+        logger.info(f"Starting transcription for session {session_id}")
         transcription = transcriber.transcribe(audio_path)
         
         # Save transcription
@@ -247,14 +250,56 @@ def process_audio(session_id, audio_path):
         transcript_path = os.path.join(results_dir, "transcript.json")
         transcriber.save_transcription(transcription, transcript_path)
         
+        # Check if transcription was successful
+        if not transcription.get('text') and not transcription.get('segments'):
+            logger.warning(f"Transcription failed - no text or segments found for session {session_id}")
+            socketio.emit('processing_error', {
+                'session_id': session_id,
+                'error': "Speech recognition failed to transcribe any text from the audio. The video may not contain speech, or the audio quality may be too low.",
+                'component': 'audio'
+            })
+            
+            # Create a placeholder segment for UI display
+            placeholder_segment = {
+                'id': 0,
+                'start': 0,
+                'end': 10,
+                'text': "[No speech detected or transcription failed]"
+            }
+            
+            # Send placeholder segment to client
+            socketio.emit('transcription_segment', {
+                'segment': placeholder_segment,
+                'session_id': session_id
+            })
+            
+            # Signal completion with warning
+            socketio.emit('transcription_complete', {
+                'session_id': session_id,
+                'transcript_path': transcript_path,
+                'warning': "No speech detected or transcription failed"
+            })
+            
+            return
+        
+        # Log successful transcription
+        logger.info(f"Transcription successful for session {session_id}: {len(transcription['segments'])} segments")
+        
         # Send transcription segments to client
         for segment in transcription['segments']:
+            # Verify segment has text
+            if not segment.get('text'):
+                logger.warning(f"Skipping empty segment {segment.get('id')} in session {session_id}")
+                continue
+                
+            # Send segment to client
             socketio.emit('transcription_segment', {
                 'segment': segment,
                 'session_id': session_id
             })
             
             # Send to Ollama for analysis
+            logger.info(f"Analyzing segment {segment['id']} with text: '{segment['text']}'")
             prompt = f"Analyze this statement for factual accuracy: '{segment['text']}'"
             response = ollama_interface.generate(prompt)
             
@@ -391,16 +436,23 @@ def process_video(session_id, video_path, results_dir):
                 # Find transcription segments that overlap with this timestamp
                 matching_segments = []
                 try:
-                    for segment in transcriber.get_segments_at_time(timestamp):
-                        matching_segments.append(segment)
+                    matching_segments = transcriber.get_segments_at_time(timestamp)
+                    logger.info(f"Found {len(matching_segments)} matching segments at timestamp {timestamp:.2f}s")
                 except Exception as e:
                     logger.warning(f"Error getting segments at time {timestamp}: {str(e)}")
                 
                 # If we have matching segments, analyze them with the LLM
                 if matching_segments:
                     for segment in matching_segments:
+                        # Verify segment has text
+                        if not segment.get('text'):
+                            logger.warning(f"Skipping segment with no text: {segment}")
+                            continue
+                            
                         # Send to Ollama for analysis
-                        prompt = f"Analyze this statement for factual accuracy: '{segment['text']}'"
+                        segment_text = segment['text']
+                        logger.info(f"Analyzing segment at timestamp {timestamp:.2f}s with text: '{segment_text}'")
+                        prompt = f"Analyze this statement for factual accuracy: '{segment_text}'"
                         response = ollama_interface.generate(prompt)
                         
                         # Send LLM response to client
@@ -417,6 +469,8 @@ def process_video(session_id, video_path, results_dir):
                         # Wait for LLM to complete before continuing
                         # This ensures we don't overwhelm the system and provides synchronization
                         time.sleep(0.5)
+                else:
+                    logger.info(f"No matching segments found at timestamp {timestamp:.2f}s")
                 
                 # Instead of pausing for user approval, we wait for the LLM response
                 # to complete before continuing with the next frame

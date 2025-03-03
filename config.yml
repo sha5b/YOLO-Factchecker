@@ -8,12 +8,14 @@ yolo:
   sample_rate: 5  # Process every 5th frame
 
 # Speech recognition settings
-vosk:
-  model_name: "vosk-model-small-en-us-0.15"  # Smaller English US model
-  sample_rate: 16000  # Audio sample rate in Hz
-  enable_words: true  # Enable word timestamps
-  language: "en-us"   # Language code
-  alternative_results: 1  # Number of alternative results to return
+speech_recognition:
+  language: "en-US"    # Language code (e.g., en-US, fr-FR, de-DE)
+  sample_rate: 16000   # Audio sample rate in Hz
+  # The following parameters are kept for compatibility but not used
+  model_size: "small"  
+  device: "cpu"        
+  beam_size: 5         
+  word_timestamps: true
 
 # Ollama settings
 ollama:

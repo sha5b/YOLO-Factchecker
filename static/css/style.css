@@ -325,6 +325,30 @@ a:hover {
     font-size: 0.9em;
 }
 
+.expression-details, .posture-details {
+    margin-left: 10px;
+    margin-bottom: 10px;
+    padding: 5px;
+    border-left: 2px solid #ddd;
+    font-size: 0.9em;
+}
+
+.detail-item {
+    margin-bottom: 3px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.detail-label {
+    font-weight: bold;
+    color: #7f8c8d;
+}
+
+.detail-value {
+    color: #2c3e50;
+}
+
 .pause-notification {
     position: absolute;
     bottom: 10px;

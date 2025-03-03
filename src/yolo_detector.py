@@ -265,13 +265,24 @@ class YOLODetector:
             
             # Add highlight for person detections (potential faces with expressions)
             if class_name == 'person' and enhanced:
-                # Draw a highlight around the upper portion (face area)
-                face_y1 = y1
-                face_y2 = y1 + int((y2 - y1) * 0.3)  # Approximate face area as top 30% of person
-                face_x1 = x1
-                face_x2 = x2
+                # Calculate more precise face area (top 20% of person, centered horizontally)
+                person_width = x2 - x1
+                person_height = y2 - y1
                 
-                # Draw face highlight
+                # Face is typically in the top portion of the person bounding box
+                # and narrower than the full body width
+                face_width = int(person_width * 0.6)  # Face is about 60% of body width
+                face_height = int(person_height * 0.2)  # Face is about 20% of body height
+                
+                # Center the face horizontally
+                face_x1 = x1 + int((person_width - face_width) / 2)
+                face_x2 = face_x1 + face_width
+                
+                # Position at the top of the person bounding box
+                face_y1 = y1
+                face_y2 = y1 + face_height
+                
+                # Draw face highlight with a more visible style
                 cv2.rectangle(drawn_frame, (face_x1, face_y1), (face_x2, face_y2), 
                              (0, 255, 255), 2)  # Yellow highlight for face area
                 

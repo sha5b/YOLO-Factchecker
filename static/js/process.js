@@ -121,7 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             `;
                             
-                            // Add facial expression analysis
+                            // Add facial expression analysis with details
                             cardContent += `
                                 <div class="expression-item">
                                     <span class="expression-label">Expression:</span>
@@ -129,6 +129,40 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <span class="expression-confidence">(${(expr.confidence * 100).toFixed(0)}%)</span>
                                 </div>
                             `;
+                            
+                            // Add facial expression details if available
+                            if (expr.details) {
+                                cardContent += `<div class="expression-details">`;
+                                
+                                if (expr.details.eye_contact) {
+                                    cardContent += `
+                                        <div class="detail-item">
+                                            <span class="detail-label">Eye Contact:</span>
+                                            <span class="detail-value">${expr.details.eye_contact}</span>
+                                        </div>
+                                    `;
+                                }
+                                
+                                if (expr.details.blink_rate) {
+                                    cardContent += `
+                                        <div class="detail-item">
+                                            <span class="detail-label">Blink Rate:</span>
+                                            <span class="detail-value">${expr.details.blink_rate}</span>
+                                        </div>
+                                    `;
+                                }
+                                
+                                if (expr.details.micro_expressions) {
+                                    cardContent += `
+                                        <div class="detail-item">
+                                            <span class="detail-label">Micro-expressions:</span>
+                                            <span class="detail-value">${expr.details.micro_expressions}</span>
+                                        </div>
+                                    `;
+                                }
+                                
+                                cardContent += `</div>`;
+                            }
                             
                             // Add body language analysis if available
                             if (bodyLanguage) {
@@ -139,6 +173,49 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <span class="posture-confidence">(${(bodyLanguage.confidence * 100).toFixed(0)}%)</span>
                                     </div>
                                 `;
+                                
+                                // Add body language details if available
+                                if (bodyLanguage.details) {
+                                    cardContent += `<div class="posture-details">`;
+                                    
+                                    if (bodyLanguage.details.tension_level) {
+                                        cardContent += `
+                                            <div class="detail-item">
+                                                <span class="detail-label">Tension:</span>
+                                                <span class="detail-value">${bodyLanguage.details.tension_level}</span>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    if (bodyLanguage.details.movement) {
+                                        cardContent += `
+                                            <div class="detail-item">
+                                                <span class="detail-label">Movement:</span>
+                                                <span class="detail-value">${bodyLanguage.details.movement}</span>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    if (bodyLanguage.details.orientation) {
+                                        cardContent += `
+                                            <div class="detail-item">
+                                                <span class="detail-label">Orientation:</span>
+                                                <span class="detail-value">${bodyLanguage.details.orientation}</span>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    if (bodyLanguage.details.hand_position) {
+                                        cardContent += `
+                                            <div class="detail-item">
+                                                <span class="detail-label">Hands:</span>
+                                                <span class="detail-value">${bodyLanguage.details.hand_position}</span>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    cardContent += `</div>`;
+                                }
                             }
                             
                             // Update the card content

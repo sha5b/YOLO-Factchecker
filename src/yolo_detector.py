@@ -265,23 +265,26 @@ class YOLODetector:
             
             # Add highlight for person detections (potential faces with expressions)
             if class_name == 'person' and enhanced:
-                # Calculate more precise face area based on typical human proportions
+                # Calculate more precise face area based on the image shown
                 person_width = x2 - x1
                 person_height = y2 - y1
                 
-                # Face is typically in the upper portion of the person bounding box
-                # For a standing/sitting person, face is about 1/7 to 1/8 of total height
-                # and positioned at the top ~1/8 of the body
-                face_width = int(person_width * 0.5)  # Face is about 50% of body width
-                face_height = int(person_height * 0.15)  # Face is about 15% of body height
+                # Based on the image, we need to adjust the face box to be:
+                # - Lower on the person (around eye level, not at the top of the head)
+                # - Wider to encompass the entire face
+                # - Taller to include from forehead to chin
+                
+                # Adjust face dimensions
+                face_width = int(person_width * 0.65)  # Face is about 65% of body width
+                face_height = int(person_height * 0.25)  # Face is about 25% of body height
                 
                 # Center the face horizontally
                 face_x1 = x1 + int((person_width - face_width) / 2)
                 face_x2 = face_x1 + face_width
                 
-                # Position face at appropriate height (not at the very top)
-                # For most people in videos, face starts about 5-10% down from the top of the bounding box
-                face_y1 = y1 + int(person_height * 0.05)  # Start 5% down from top
+                # Position face at eye level (approximately 15-20% down from the top of the person box)
+                # This is a key adjustment based on the image
+                face_y1 = y1 + int(person_height * 0.15)  # Start 15% down from top
                 face_y2 = face_y1 + face_height
                 
                 # Draw face highlight with a more visible style

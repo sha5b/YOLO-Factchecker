@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const transcriptionContent = document.getElementById('transcription-content');
     const llmContent = document.getElementById('llm-content');
     const summaryContent = document.getElementById('summary-content');
+    const personDetectionsContainer = document.getElementById('person-detections-container');
     const downloadBtn = document.getElementById('download-btn');
     const pauseBtn = document.getElementById('pause-btn');
     const resumeBtn = document.getElementById('resume-btn');
@@ -21,16 +22,49 @@ document.addEventListener('DOMContentLoaded', function() {
     let frameCount = 0;
     let fpsValue = 0;
     
+    // Function to clear all data containers
+    function clearAllData() {
+        // Clear all data containers
+        detectionsList.innerHTML = '';
+        transcriptionContent.innerHTML = '';
+        llmContent.innerHTML = '';
+        summaryContent.innerHTML = '';
+        personDetectionsContainer.innerHTML = '';
+        
+        // Reset stats
+        fpsStats.textContent = 'FPS: 0.0';
+        progressStats.textContent = 'Progress: 0%';
+        
+        // Reset state
+        isPaused = false;
+        processingComplete = false;
+        videoComplete = false;
+        transcriptionComplete = false;
+        
+        // Reset buttons
+        downloadBtn.disabled = true;
+        pauseBtn.disabled = false;
+        resumeBtn.disabled = true;
+        
+        // Set placeholder image
+        currentFrame.src = '/static/img/placeholder.html';
+        currentFrame.alt = 'Initializing...';
+        
+        console.log('All data containers cleared');
+    }
+    
+    // Clear data on page load
+    clearAllData();
+    
     // Connect to WebSocket
     const socket = io();
-    
-    // Set up placeholder
-    currentFrame.src = '/static/img/placeholder.html';
-    currentFrame.alt = 'Initializing...';
     
     // Start processing when connected
     socket.on('connect', function() {
         console.log('Connected to server');
+        
+        // Clear all data before starting new processing
+        clearAllData();
         
         // Start processing
         socket.emit('start_processing', {
@@ -307,47 +341,111 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle LLM responses
     socket.on('llm_response', function(data) {
-        // Create response element
-        const responseElement = document.createElement('div');
-        responseElement.className = 'llm-response';
-        responseElement.id = `llm-response-${data.segment_id}`;
+        console.log('Received LLM response:', data);
         
-        // Check if this is a response triggered by facial expression
-        const isFacialExpressionTriggered = data.frame_idx !== undefined;
+        // Check if we already have a response element for this segment
+        const existingResponse = document.getElementById(`llm-response-${data.segment_id}`);
         
-        // Add special class if triggered by facial expression
-        if (isFacialExpressionTriggered) {
-            responseElement.classList.add('facial-expression-triggered');
+        if (existingResponse) {
+            // If this is a new analysis for an existing segment (e.g., triggered by facial expression)
+            // and the existing one wasn't triggered by facial expression, create a new element
+            const wasTriggeredByFacialExpression = existingResponse.classList.contains('facial-expression-triggered');
+            const isTriggeredByFacialExpression = data.frame_idx !== undefined;
+            
+            if (isTriggeredByFacialExpression && !wasTriggeredByFacialExpression) {
+                // Create a new element for this facial expression triggered analysis
+                createNewResponseElement();
+            } else {
+                // Update the existing element
+                updateExistingResponseElement(existingResponse);
+            }
+        } else {
+            // Create a new response element
+            createNewResponseElement();
         }
         
-        // Format timestamp if available
-        let timestampInfo = '';
-        if (data.timestamp !== undefined) {
-            timestampInfo = ` at ${formatTime(data.timestamp)}`;
+        function createNewResponseElement() {
+            // Create response element
+            const responseElement = document.createElement('div');
+            responseElement.className = 'llm-response';
+            responseElement.id = `llm-response-${data.segment_id}`;
+            
+            // Check if this is a response triggered by facial expression
+            const isFacialExpressionTriggered = data.frame_idx !== undefined;
+            
+            // Add special class if triggered by facial expression
+            if (isFacialExpressionTriggered) {
+                responseElement.classList.add('facial-expression-triggered');
+            }
+            
+            // Format timestamp if available
+            let timestampInfo = '';
+            if (data.timestamp !== undefined) {
+                timestampInfo = ` at ${formatTime(data.timestamp)}`;
+            }
+            
+            // Add content with enhanced information
+            responseElement.innerHTML = `
+                <div class="llm-response-header">
+                    ${isFacialExpressionTriggered ? 
+                        `<span class="expression-trigger-indicator">👤 Facial Expression Detected</span> ` : 
+                        ''}
+                    Analysis for segment ${data.segment_id}${timestampInfo}:
+                </div>
+                <div class="llm-response-text">${data.response}</div>
+            `;
+            
+            // Remove loading indicator if present
+            const loadingIndicator = llmContent.querySelector('.loading-indicator');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+            
+            // Add to LLM content
+            llmContent.appendChild(responseElement);
+            
+            // Scroll to bottom
+            llmContent.scrollTop = llmContent.scrollHeight;
+            
+            // Flash the element to draw attention to it
+            responseElement.classList.add('new-response');
+            setTimeout(() => {
+                responseElement.classList.remove('new-response');
+            }, 1000);
         }
         
-        // Add content with enhanced information
-        responseElement.innerHTML = `
-            <div class="llm-response-header">
-                ${isFacialExpressionTriggered ? 
-                    `<span class="expression-trigger-indicator">👤 Facial Expression Detected</span> ` : 
-                    ''}
-                Analysis for segment ${data.segment_id}${timestampInfo}:
-            </div>
-            <div class="llm-response-text">${data.response}</div>
-        `;
-        
-        // Remove loading indicator if present
-        const loadingIndicator = llmContent.querySelector('.loading-indicator');
-        if (loadingIndicator) {
-            loadingIndicator.remove();
+        function updateExistingResponseElement(element) {
+            // Check if this is a response triggered by facial expression
+            const isFacialExpressionTriggered = data.frame_idx !== undefined;
+            
+            // Add special class if triggered by facial expression
+            if (isFacialExpressionTriggered) {
+                element.classList.add('facial-expression-triggered');
+            }
+            
+            // Format timestamp if available
+            let timestampInfo = '';
+            if (data.timestamp !== undefined) {
+                timestampInfo = ` at ${formatTime(data.timestamp)}`;
+            }
+            
+            // Update content with enhanced information
+            element.innerHTML = `
+                <div class="llm-response-header">
+                    ${isFacialExpressionTriggered ? 
+                        `<span class="expression-trigger-indicator">👤 Facial Expression Detected</span> ` : 
+                        ''}
+                    Analysis for segment ${data.segment_id}${timestampInfo}:
+                </div>
+                <div class="llm-response-text">${data.response}</div>
+            `;
+            
+            // Flash the element to draw attention to the update
+            element.classList.add('updated-response');
+            setTimeout(() => {
+                element.classList.remove('updated-response');
+            }, 1000);
         }
-        
-        // Add to LLM content
-        llmContent.appendChild(responseElement);
-        
-        // Scroll to bottom
-        llmContent.scrollTop = llmContent.scrollHeight;
     });
     
     // Handle video processing complete

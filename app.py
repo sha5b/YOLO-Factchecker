@@ -3,6 +3,7 @@ import time
 import json
 import uuid
 import logging
+import threading
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file, Response
 from flask_socketio import SocketIO, emit
@@ -74,6 +75,10 @@ video_processor = None
 yolo_detector = None
 transcriber = None
 ollama_interface = None
+
+# Track active processing tasks and add cancellation flags
+active_tasks = {}
+processing_flags = {}
 
 def initialize_components():
     """Initialize processing components when needed"""
@@ -168,6 +173,12 @@ def handle_start_processing(data):
     session_id = data['session_id']
     video_path = data['video_path']
     
+    # Cancel any existing processing tasks
+    cancel_existing_tasks()
+    
+    # Create a new processing flag for this session
+    processing_flags[session_id] = {"cancel": False}
+    
     # Initialize components if needed
     initialize_components()
     
@@ -224,19 +235,38 @@ def handle_start_processing(data):
     video_processor.extract_audio(audio_path)
     
     # Start transcription in background
-    socketio.start_background_task(
+    audio_task = socketio.start_background_task(
         process_audio, 
         session_id=session_id, 
         audio_path=audio_path
     )
     
     # Start video processing in background
-    socketio.start_background_task(
+    video_task = socketio.start_background_task(
         process_video, 
         session_id=session_id, 
         video_path=video_path,
         results_dir=results_dir
     )
+    
+    # Store tasks for potential cancellation
+    active_tasks[session_id] = {
+        "audio": audio_task,
+        "video": video_task
+    }
+
+def cancel_existing_tasks():
+    """Cancel any existing processing tasks"""
+    # Set cancel flags for all active sessions
+    for session_id, flags in processing_flags.items():
+        flags["cancel"] = True
+        logger.info(f"Cancelling processing for session {session_id}")
+    
+    # Clear active tasks (they will exit gracefully when they check the cancel flag)
+    active_tasks.clear()
+    
+    # Wait a moment for tasks to notice the cancellation
+    time.sleep(0.5)
 
 def process_audio(session_id, audio_path):
     """Process audio for transcription"""
@@ -244,6 +274,11 @@ def process_audio(session_id, audio_path):
         # Transcribe audio
         logger.info(f"Starting transcription for session {session_id}")
         transcription = transcriber.transcribe(audio_path)
+        
+        # Check if processing was cancelled
+        if session_id in processing_flags and processing_flags[session_id]["cancel"]:
+            logger.info(f"Audio processing cancelled for session {session_id}")
+            return
         
         # Save transcription
         results_dir = os.path.join('static/results', session_id)
@@ -287,6 +322,11 @@ def process_audio(session_id, audio_path):
         
         # Send transcription segments to client
         for segment in transcription['segments']:
+            # Check if processing was cancelled
+            if session_id in processing_flags and processing_flags[session_id]["cancel"]:
+                logger.info(f"Audio processing cancelled for session {session_id}")
+                return
+                
             # Verify segment has text
             if not segment.get('text'):
                 logger.warning(f"Skipping empty segment {segment.get('id')} in session {session_id}")
@@ -343,6 +383,11 @@ def process_video(session_id, video_path, results_dir):
         
         # Process frames sequentially
         while current_frame_idx < total_frames:
+            # Check if processing was cancelled
+            if session_id in processing_flags and processing_flags[session_id]["cancel"]:
+                logger.info(f"Video processing cancelled for session {session_id}")
+                return
+                
             # Get frame
             frame = video_processor.get_frame(current_frame_idx)
             if frame is None:
@@ -476,6 +521,11 @@ def process_video(session_id, video_path, results_dir):
             
             # If we detect a face with significant expression, analyze the audio at this timestamp
             if has_face and has_significant_expression:
+                # Check if processing was cancelled
+                if session_id in processing_flags and processing_flags[session_id]["cancel"]:
+                    logger.info(f"Video processing cancelled for session {session_id}")
+                    return
+                    
                 # Get the timestamp for this frame
                 timestamp = current_frame_idx / video_processor.fps
                 
@@ -490,6 +540,11 @@ def process_video(session_id, video_path, results_dir):
                 # Only perform LLM analysis when both facial expressions and valid transcript are available
                 if matching_segments and facial_expression_analysis:
                     for segment in matching_segments:
+                        # Check if processing was cancelled
+                        if session_id in processing_flags and processing_flags[session_id]["cancel"]:
+                            logger.info(f"Video processing cancelled for session {session_id}")
+                            return
+                            
                         # Verify segment has meaningful text (not just placeholders or empty)
                         segment_text = segment.get('text', '')
                         
@@ -534,7 +589,52 @@ def process_video(session_id, video_path, results_dir):
                                 posture_type = posture.get('posture', 'Unknown')
                                 body_language_descriptions.append(f"Person {i+1}: {posture_type}")
                         
-                        # Build comprehensive prompt
+                        # Include the actual image data in the analysis
+                        # Convert the current frame to a detailed description
+                        
+                        # Create a more detailed scene description based on the frame
+                        # Since we can't directly send the image to the LLM, we'll create a detailed description
+                        
+                        # Get frame dimensions
+                        frame_height, frame_width = frame.shape[:2]
+                        
+                        # Create a detailed scene description
+                        scene_description = "Scene description: "
+                        
+                        # Describe the overall scene based on detections
+                        if len(detection_descriptions) > 0:
+                            scene_description += f"The frame shows {', '.join(detection_descriptions)}. "
+                        else:
+                            scene_description += "No specific objects detected in the scene. "
+                        
+                        # Describe people's positions
+                        if facial_expression_analysis:
+                            for i, expr in enumerate(facial_expression_analysis):
+                                bbox = expr.get('bbox', [0, 0, 0, 0])
+                                x1, y1, x2, y2 = bbox
+                                
+                                # Determine position in frame (top-left, center, etc.)
+                                horizontal_pos = "left" if x1 < frame_width/3 else "center" if x1 < 2*frame_width/3 else "right"
+                                vertical_pos = "top" if y1 < frame_height/3 else "middle" if y1 < 2*frame_height/3 else "bottom"
+                                
+                                scene_description += f"Person {i+1} is in the {vertical_pos}-{horizontal_pos} of the frame "
+                                scene_description += f"with a {expr.get('expression', 'neutral')} expression. "
+                        
+                        # Describe any notable visual elements or background
+                        scene_description += "The scene appears to be "
+                        indoor_objects = ["chair", "table", "sofa", "bed", "tv", "laptop", "book"]
+                        outdoor_objects = ["car", "truck", "tree", "sky", "road", "building"]
+                        
+                        detected_classes = [det['class_name'].lower() for det in detections]
+                        
+                        if any(obj in detected_classes for obj in indoor_objects):
+                            scene_description += "indoors, possibly in a room or office setting. "
+                        elif any(obj in detected_classes for obj in outdoor_objects):
+                            scene_description += "outdoors. "
+                        else:
+                            scene_description += "in an undetermined setting. "
+                        
+                        # Build comprehensive prompt with detailed scene description
                         prompt = f"""Analyze this video segment comprehensively:
 
 TIMESTAMP: {timestamp:.2f} seconds
@@ -544,6 +644,7 @@ TRANSCRIPT: "{segment_text}"
 VISUAL ELEMENTS:
 - Detected objects: {', '.join(detection_descriptions) if detection_descriptions else 'None detected'}
 - People in frame: {len(facial_expression_analysis) if facial_expression_analysis else 0}
+- {scene_description}
 
 PEOPLE ANALYSIS:
 - Facial expressions: {', '.join(expression_descriptions) if expression_descriptions else 'None detected'}
@@ -551,9 +652,9 @@ PEOPLE ANALYSIS:
 
 Please provide:
 1. A factual analysis of what is being said
-2. An interpretation of the visual elements and how they relate to the speech
+2. A detailed interpretation of the visual elements and how they relate to the speech
 3. An assessment of the speaker's expressions and body language
-4. An overall analysis of what is happening in this moment of the video
+4. An overall analysis of what is happening in this moment of the video, including any inconsistencies between what is said and what is shown
 """
                         
                         logger.info(f"Sending comprehensive analysis prompt for segment at timestamp {timestamp:.2f}s")
@@ -589,6 +690,11 @@ Please provide:
             # Move to next frame
             current_frame_idx += sample_rate
         
+        # Check if processing was cancelled
+        if session_id in processing_flags and processing_flags[session_id]["cancel"]:
+            logger.info(f"Video processing cancelled for session {session_id}")
+            return
+            
         # Save all detections
         detection_path = os.path.join(results_dir, "detections.json")
         with open(detection_path, 'w') as f:

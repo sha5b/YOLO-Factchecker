@@ -73,74 +73,88 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update progress
         progressStats.textContent = `Progress: ${data.progress}%`;
         
-        // Update frame image
-        if (data.frame) {
-            const imageData = hexToBytes(data.frame);
-            const blob = new Blob([imageData], { type: 'image/jpeg' });
-            const imageUrl = URL.createObjectURL(blob);
-            
-            currentFrame.src = imageUrl;
-            currentFrame.alt = `Frame ${data.frame_idx}`;
-            
-            // Add frame info overlay if there's a face with expression
-            if (data.has_face && data.has_expression) {
-                // Add a visual indicator that this frame has significant facial expressions
-                const frameContainer = currentFrame.parentElement;
+            // Update frame image
+            if (data.frame) {
+                const imageData = hexToBytes(data.frame);
+                const blob = new Blob([imageData], { type: 'image/jpeg' });
+                const imageUrl = URL.createObjectURL(blob);
                 
-                // Create or update the indicator
-                let indicator = frameContainer.querySelector('.expression-indicator');
-                if (!indicator) {
-                    indicator = document.createElement('div');
-                    indicator.className = 'expression-indicator';
-                    frameContainer.appendChild(indicator);
+                currentFrame.src = imageUrl;
+                currentFrame.alt = `Frame ${data.frame_idx}`;
+                
+                // Track individual persons outside the video frame
+                if (data.has_face && data.has_expression) {
+                    // Get the person detections container
+                    const personDetectionsContainer = document.getElementById('person-detections-container');
+                    
+                    // Process each facial expression
+                    if (data.facial_expressions && data.facial_expressions.length > 0) {
+                        data.facial_expressions.forEach((expr, personIndex) => {
+                            // Create a unique ID for this person
+                            const personId = `person-${personIndex + 1}`;
+                            
+                            // Check if this person already has a card
+                            let personCard = document.getElementById(personId);
+                            
+                            // If no card exists for this person, create one
+                            if (!personCard) {
+                                personCard = document.createElement('div');
+                                personCard.className = 'person-detection-card';
+                                personCard.id = personId;
+                                personDetectionsContainer.appendChild(personCard);
+                            }
+                            
+                            // Get corresponding body language for this person if available
+                            let bodyLanguage = null;
+                            if (data.body_language && data.body_language.length > personIndex) {
+                                bodyLanguage = data.body_language[personIndex];
+                            }
+                            
+                            // Build card content with facial expression and body language info
+                            let cardContent = `
+                                <div class="person-detection-title">
+                                    <span class="person-detection-icon">👤</span>
+                                    <span>Person ${personIndex + 1}</span>
+                                </div>
+                                <div class="person-detection-frame">
+                                    Last seen at frame ${data.frame_idx}
+                                </div>
+                            `;
+                            
+                            // Add facial expression analysis
+                            cardContent += `
+                                <div class="expression-item">
+                                    <span class="expression-label">Expression:</span>
+                                    <span class="expression-value">${expr.expression}</span>
+                                    <span class="expression-confidence">(${(expr.confidence * 100).toFixed(0)}%)</span>
+                                </div>
+                            `;
+                            
+                            // Add body language analysis if available
+                            if (bodyLanguage) {
+                                cardContent += `
+                                    <div class="posture-item">
+                                        <span class="posture-label">Posture:</span>
+                                        <span class="posture-value">${bodyLanguage.posture}</span>
+                                        <span class="posture-confidence">(${(bodyLanguage.confidence * 100).toFixed(0)}%)</span>
+                                    </div>
+                                `;
+                            }
+                            
+                            // Update the card content
+                            personCard.innerHTML = cardContent;
+                            
+                            // Add a highlight effect to show it was just updated
+                            personCard.classList.add('card-updated');
+                            setTimeout(() => {
+                                personCard.classList.remove('card-updated');
+                            }, 1000);
+                        });
+                    }
+                    
+                    // Highlight the current frame
+                    currentFrame.classList.add('highlight-frame');
                 }
-                
-                // Build indicator content with facial expression and body language info
-                let indicatorContent = `
-                    <div class="indicator-content">
-                        <span class="indicator-icon">👤</span>
-                        <span class="indicator-text">Person Detected</span>
-                    </div>
-                `;
-                
-                // Add facial expression analysis if available
-                if (data.facial_expressions && data.facial_expressions.length > 0) {
-                    indicatorContent += `<div class="analysis-details">`;
-                    data.facial_expressions.forEach((expr, index) => {
-                        indicatorContent += `
-                            <div class="expression-item">
-                                <span class="expression-label">Face ${index+1}:</span>
-                                <span class="expression-value">${expr.expression}</span>
-                                <span class="expression-confidence">(${(expr.confidence * 100).toFixed(0)}%)</span>
-                            </div>
-                        `;
-                    });
-                    indicatorContent += `</div>`;
-                }
-                
-                // Add body language analysis if available
-                if (data.body_language && data.body_language.length > 0) {
-                    indicatorContent += `<div class="analysis-details">`;
-                    data.body_language.forEach((posture, index) => {
-                        indicatorContent += `
-                            <div class="posture-item">
-                                <span class="posture-label">Posture ${index+1}:</span>
-                                <span class="posture-value">${posture.posture}</span>
-                                <span class="posture-confidence">(${(posture.confidence * 100).toFixed(0)}%)</span>
-                            </div>
-                        `;
-                    });
-                    indicatorContent += `</div>`;
-                }
-                
-                indicator.innerHTML = indicatorContent;
-                
-                // Make it visible
-                indicator.style.display = 'block';
-                
-                // Highlight the current frame
-                currentFrame.classList.add('highlight-frame');
-            }
             
             // Clean up previous URL to avoid memory leaks
             setTimeout(() => URL.revokeObjectURL(imageUrl), 1000);

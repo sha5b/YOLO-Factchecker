@@ -2,7 +2,7 @@
 
 # YOLO settings
 yolo:
-  model: "yolov8s.pt"  # Using small model as requested
+  model: "models/yolo/yolov8s.pt"  # Using small model as requested
   confidence_threshold: 0.5
   img_size: 640
   sample_rate: 5  # Process every 5th frame

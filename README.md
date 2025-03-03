@@ -17,7 +17,7 @@ A Flask-based web application that processes videos using YOLO object detection,
 ## Requirements
 
 - Python 3.9+
-- FFmpeg (optional, for audio extraction - moviepy is used as a fallback)
+- FFmpeg (required for audio extraction)
 - CUDA-compatible GPU (optional but recommended)
 - [Ollama](https://ollama.ai/) installed locally
 

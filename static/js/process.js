@@ -95,34 +95,93 @@ document.addEventListener('DOMContentLoaded', function() {
                     frameContainer.appendChild(indicator);
                 }
                 
-                indicator.innerHTML = `
+                // Build indicator content with facial expression and body language info
+                let indicatorContent = `
                     <div class="indicator-content">
                         <span class="indicator-icon">👤</span>
-                        <span class="indicator-text">Facial Expression Detected</span>
+                        <span class="indicator-text">Person Detected</span>
                     </div>
                 `;
+                
+                // Add facial expression analysis if available
+                if (data.facial_expressions && data.facial_expressions.length > 0) {
+                    indicatorContent += `<div class="analysis-details">`;
+                    data.facial_expressions.forEach((expr, index) => {
+                        indicatorContent += `
+                            <div class="expression-item">
+                                <span class="expression-label">Face ${index+1}:</span>
+                                <span class="expression-value">${expr.expression}</span>
+                                <span class="expression-confidence">(${(expr.confidence * 100).toFixed(0)}%)</span>
+                            </div>
+                        `;
+                    });
+                    indicatorContent += `</div>`;
+                }
+                
+                // Add body language analysis if available
+                if (data.body_language && data.body_language.length > 0) {
+                    indicatorContent += `<div class="analysis-details">`;
+                    data.body_language.forEach((posture, index) => {
+                        indicatorContent += `
+                            <div class="posture-item">
+                                <span class="posture-label">Posture ${index+1}:</span>
+                                <span class="posture-value">${posture.posture}</span>
+                                <span class="posture-confidence">(${(posture.confidence * 100).toFixed(0)}%)</span>
+                            </div>
+                        `;
+                    });
+                    indicatorContent += `</div>`;
+                }
+                
+                indicator.innerHTML = indicatorContent;
                 
                 // Make it visible
                 indicator.style.display = 'block';
                 
                 // Highlight the current frame
                 currentFrame.classList.add('highlight-frame');
-                
-                // Remove highlight after 2 seconds
-                setTimeout(() => {
-                    currentFrame.classList.remove('highlight-frame');
-                    indicator.style.display = 'none';
-                }, 2000);
             }
             
             // Clean up previous URL to avoid memory leaks
-            setTimeout(() => URL.createObjectURL(imageUrl), 1000);
+            setTimeout(() => URL.revokeObjectURL(imageUrl), 1000);
         }
         
         // Update detections list
         if (data.detections && data.detections.length > 0) {
             updateDetectionsList(data.detections);
         }
+    });
+    
+    // Handle pause/resume buttons manually
+    pauseBtn.addEventListener('click', function() {
+        isPaused = true;
+        pauseBtn.disabled = true;
+        resumeBtn.disabled = false;
+        
+        // Show pause notification
+        const pauseNotification = document.createElement('div');
+        pauseNotification.className = 'pause-notification';
+        pauseNotification.innerHTML = `
+            <div class="pause-header">Video Paused</div>
+            <button class="resume-btn" onclick="resumeProcessing()">Continue Processing</button>
+        `;
+        
+        // Add to the frame container
+        const frameContainer = currentFrame.parentElement;
+        frameContainer.appendChild(pauseNotification);
+        
+        // Add resume function to window scope
+        window.resumeProcessing = function() {
+            isPaused = false;
+            pauseBtn.disabled = false;
+            resumeBtn.disabled = true;
+            
+            // Remove pause notification
+            const notification = document.querySelector('.pause-notification');
+            if (notification) {
+                notification.remove();
+            }
+        };
     });
     
     // Handle transcription segments

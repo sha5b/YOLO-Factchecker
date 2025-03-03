@@ -112,10 +112,37 @@ class VideoProcessor:
             
             # Import moviepy here to avoid dependency if not used
             try:
-                from moviepy.editor import VideoFileClip
-                moviepy_available = True
-            except ImportError:
-                logger.warning("moviepy not installed. Trying ffmpeg as fallback.")
+                # First try to import moviepy directly
+                try:
+                    from moviepy.editor import VideoFileClip
+                    moviepy_available = True
+                    logger.info("Using moviepy for audio extraction")
+                except ImportError:
+                    # If that fails, try to import it using a subprocess to ensure it's in the path
+                    import sys
+                    import subprocess
+                    
+                    # Check if moviepy is installed using pip
+                    try:
+                        subprocess.run([sys.executable, "-m", "pip", "show", "moviepy"], 
+                                      check=True, capture_output=True)
+                        
+                        # If we get here, moviepy is installed but there might be an import issue
+                        logger.warning("moviepy is installed but could not be imported directly. Trying alternative import.")
+                        
+                        # Try to add the site-packages directory to the path
+                        import site
+                        sys.path.extend(site.getsitepackages())
+                        
+                        # Try import again
+                        from moviepy.editor import VideoFileClip
+                        moviepy_available = True
+                        logger.info("Successfully imported moviepy after path adjustment")
+                    except subprocess.CalledProcessError:
+                        logger.warning("moviepy not installed according to pip. Trying ffmpeg as fallback.")
+                        moviepy_available = False
+            except Exception as e:
+                logger.warning(f"Error importing moviepy: {str(e)}. Trying ffmpeg as fallback.")
                 moviepy_available = False
             
             if moviepy_available:

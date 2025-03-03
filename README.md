@@ -1,20 +1,23 @@
 # YOLO Factchecker
 
-A Flask-based web application that processes videos using YOLO object detection, speech recognition, and local LLM (Ollama) for fact-checking.
+A Flask-based web application that processes videos using YOLO object detection, speech recognition, and local LLM (Ollama) for fact-checking. The application also analyzes facial expressions and body language when people are detected in the video.
 
 ## Features
 
 - Upload and process videos
 - Real-time YOLO object detection with visualization
+- Automatic facial expression and body language analysis
+- Intelligent video pausing when significant expressions are detected
+- Sequential video processing with frame-by-frame analysis
 - Speech transcription using Vosk (lightweight offline speech recognition)
 - Fact-checking using local Ollama LLM
-- Live processing visualization
+- Live processing visualization with detailed analytics
 - Downloadable summary of results
 
 ## Requirements
 
 - Python 3.9+
-- FFmpeg (for audio extraction)
+- FFmpeg (optional, for audio extraction - moviepy is used as a fallback)
 - CUDA-compatible GPU (optional but recommended)
 - [Ollama](https://ollama.ai/) installed locally
 

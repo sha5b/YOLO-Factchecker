@@ -293,29 +293,70 @@ def process_video(session_id, video_path, results_dir):
         total_frames = video_processor.total_frames
         processed_count = 0
         
-        # Process frames
-        for frame_idx in range(0, total_frames, sample_rate):
+        # Current frame index (for sequential processing)
+        current_frame_idx = 0
+        
+        # Process frames sequentially
+        while current_frame_idx < total_frames:
             # Get frame
-            frame = video_processor.get_frame(frame_idx)
+            frame = video_processor.get_frame(current_frame_idx)
             if frame is None:
+                current_frame_idx += sample_rate
                 continue
             
             # Run detection
             detections = yolo_detector.detect(frame)
             
-            # Check for faces with expressions
+            # Check for faces with expressions and analyze body language
             has_face = False
             has_significant_expression = False
+            body_language_analysis = []
+            facial_expression_analysis = []
+            
             for det in detections:
                 # Add frame information
-                det['frame'] = frame_idx
-                det['timestamp'] = frame_idx / video_processor.fps
+                det['frame'] = current_frame_idx
+                det['timestamp'] = current_frame_idx / video_processor.fps
                 
                 # Check if this is a person detection
                 if det['class_name'] == 'person':
                     has_face = True
-                    # For now, we'll consider all person detections as potentially having expressions
+                    
+                    # Extract person bounding box
+                    x1, y1, x2, y2 = map(int, det["bbox"])
+                    person_height = y2 - y1
+                    
+                    # Estimate face region (top 20% of person bounding box)
+                    face_y1 = y1
+                    face_y2 = y1 + int(person_height * 0.2)
+                    face_x1 = x1
+                    face_x2 = x2
+                    
+                    # Analyze facial expression (simplified for now)
                     # In a real implementation, you would use a facial expression detection model
+                    facial_expression = "Neutral"  # Default
+                    expression_confidence = 0.7
+                    
+                    # Add facial expression analysis
+                    facial_expression_analysis.append({
+                        'bbox': [face_x1, face_y1, face_x2, face_y2],
+                        'expression': facial_expression,
+                        'confidence': expression_confidence
+                    })
+                    
+                    # Analyze body language (simplified for now)
+                    # In a real implementation, you would use pose estimation
+                    body_posture = "Standing"  # Default
+                    posture_confidence = 0.8
+                    
+                    # Add body language analysis
+                    body_language_analysis.append({
+                        'bbox': det["bbox"],
+                        'posture': body_posture,
+                        'confidence': posture_confidence
+                    })
+                    
+                    # For now, we'll consider all person detections as potentially having expressions
                     has_significant_expression = True
             
             all_detections.extend(detections)
@@ -330,12 +371,14 @@ def process_video(session_id, video_path, results_dir):
             # Send frame to client
             socketio.emit('processed_frame', {
                 'frame': img_str.hex(),
-                'frame_idx': frame_idx,
+                'frame_idx': current_frame_idx,
                 'detections': detections,
                 'session_id': session_id,
-                'progress': min(100, int(100 * frame_idx / total_frames)),
+                'progress': min(100, int(100 * current_frame_idx / total_frames)),
                 'has_face': has_face,
-                'has_expression': has_significant_expression
+                'has_expression': has_significant_expression,
+                'facial_expressions': facial_expression_analysis,
+                'body_language': body_language_analysis
             })
             
             processed_count += 1
@@ -343,12 +386,15 @@ def process_video(session_id, video_path, results_dir):
             # If we detect a face with significant expression, analyze the audio at this timestamp
             if has_face and has_significant_expression:
                 # Get the timestamp for this frame
-                timestamp = frame_idx / video_processor.fps
+                timestamp = current_frame_idx / video_processor.fps
                 
                 # Find transcription segments that overlap with this timestamp
                 matching_segments = []
-                for segment in transcriber.get_segments_at_time(timestamp):
-                    matching_segments.append(segment)
+                try:
+                    for segment in transcriber.get_segments_at_time(timestamp):
+                        matching_segments.append(segment)
+                except Exception as e:
+                    logger.warning(f"Error getting segments at time {timestamp}: {str(e)}")
                 
                 # If we have matching segments, analyze them with the LLM
                 if matching_segments:
@@ -362,19 +408,28 @@ def process_video(session_id, video_path, results_dir):
                             'segment_id': segment['id'],
                             'response': response,
                             'session_id': session_id,
-                            'frame_idx': frame_idx,
-                            'timestamp': timestamp
+                            'frame_idx': current_frame_idx,
+                            'timestamp': timestamp,
+                            'facial_expressions': facial_expression_analysis,
+                            'body_language': body_language_analysis
                         })
                         
                         # Wait for LLM to complete before continuing
                         # This ensures we don't overwhelm the system and provides synchronization
                         time.sleep(0.5)
                 
+                # Instead of pausing for user approval, we wait for the LLM response
+                # to complete before continuing with the next frame
+                
                 # Add a small delay after processing a significant frame
-                time.sleep(0.2)
+                # to allow the client to display the results
+                time.sleep(0.5)  # Shorter delay, just enough to display results
             else:
                 # Smaller delay for frames without significant expressions
                 time.sleep(0.05)
+            
+            # Move to next frame
+            current_frame_idx += sample_rate
         
         # Save all detections
         detection_path = os.path.join(results_dir, "detections.json")

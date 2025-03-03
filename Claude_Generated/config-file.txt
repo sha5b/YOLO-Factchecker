@@ -1,0 +1,84 @@
+# Truth Detector Configuration
+
+# General settings
+project_name: "truth-detector"
+version: "0.1.0"
+log_level: "INFO"
+device: "auto"  # 'cpu', 'cuda', or 'auto'
+
+# File paths
+paths:
+  models: "models/"
+  knowledge_base: "data/knowledge_base/"
+  output: "data/processed/"
+  tmp: "/tmp/truth-detector/"
+
+# YOLO settings
+yolo:
+  model: "yolov8n.pt"  # Options: yolov8n.pt, yolov8s.pt, yolov8m.pt, yolov8l.pt, yolov8x.pt
+  confidence_threshold: 0.5
+  img_size: 640
+  sample_rate: 5  # Process every Nth frame
+
+# Speech recognition settings
+whisper:
+  model_size: "base"  # Options: tiny, base, small, medium, large-v3
+  use_faster_whisper: true
+  vad_filter: true
+  language: null  # null for auto-detection, or language code (e.g., 'en')
+  compute_type: "float16"  # Options: float32, float16, int8
+
+# Speaker diarization
+diarization:
+  enabled: false
+  num_speakers: 2  # Expected number of speakers
+  min_speakers: 1  # Minimum number of speakers (null for auto-detection)
+  max_speakers: 5  # Maximum number of speakers (null for auto-detection)
+
+# Knowledge base settings
+knowledge_base:
+  vector_db: "faiss"  # Options: faiss, chroma
+  embedding_model: "all-MiniLM-L6-v2"  # SentenceTransformers model
+  top_k: 5  # Number of documents to retrieve for fact checking
+  chunk_size: 256  # Maximum token size per knowledge chunk
+  chunk_overlap: 32  # Token overlap between chunks
+
+# LLM settings
+llm:
+  model_type: "llama3"  # Options: llama3, mistral, gemma
+  model_size: "8b"  # Model size (e.g., 7b, 8b, 13b)
+  quantization: "int4"  # Options: none, int8, int4, gptq
+  context_length: 8192  # Maximum context length
+  max_tokens: 1024  # Maximum number of tokens to generate
+  temperature: 0.2  # Generation temperature
+  top_p: 0.9  # Top-p sampling
+  top_k: 40  # Top-k sampling
+  repetition_penalty: 1.1  # Repetition penalty
+  inference_engine: "llama.cpp"  # Options: llama.cpp, vllm, exllama
+
+# Analysis settings
+analysis:
+  inconsistency_threshold: 0.7  # Threshold for detecting inconsistencies
+  fact_check_threshold: 0.8  # Threshold for fact checking confidence
+  importance_threshold: 0.5  # Threshold for important claims
+  check_semantics: true  # Perform semantic analysis
+  check_visual_consistency: true  # Check consistency with visual elements
+  check_claims: true  # Extract and check factual claims
+
+# Visualization settings
+visualize:
+  enabled: true
+  type: "overlay"  # Options: overlay, dashboard, report
+  highlight_issues: true
+  show_confidence: true
+  output_format: "mp4"  # Options: mp4, dashboard, html
+  fps: 30  # Output FPS for videos
+
+# Web interface settings
+web:
+  enabled: false
+  host: "localhost"
+  port: 8080
+  debug: false
+  allow_uploads: true
+  max_upload_size: 500  # In MB

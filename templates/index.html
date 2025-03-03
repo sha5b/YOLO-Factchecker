@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO Factchecker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>YOLO Factchecker</h1>
+            <p>Upload a video to analyze with YOLO detection and fact-checking</p>
+        </header>
+        
+        <main>
+            <section class="upload-section">
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div class="file-input-container">
+                        <label for="video-upload">Select Video File</label>
+                        <input type="file" id="video-upload" name="video" accept="video/*" required>
+                        <div class="file-name" id="file-name">No file selected</div>
+                    </div>
+                    
+                    <button type="submit" class="upload-btn">Upload & Process</button>
+                </form>
+                
+                <div class="upload-progress" id="upload-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="progress-text">Uploading: 0%</div>
+                </div>
+            </section>
+            
+            <section class="info-section">
+                <h2>About YOLO Factchecker</h2>
+                <p>This tool analyzes videos using:</p>
+                <ul>
+                    <li>YOLOv8 object detection to identify visual elements</li>
+                    <li>Whisper speech recognition to transcribe audio</li>
+                    <li>Local LLM (Ollama) to analyze and fact-check content</li>
+                </ul>
+                <p>The processing happens entirely on your local machine, with no data sent to external servers.</p>
+            </section>
+        </main>
+        
+        <footer>
+            <p>YOLO Factchecker - Local Video Analysis Tool</p>
+        </footer>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+</body>
+</html>

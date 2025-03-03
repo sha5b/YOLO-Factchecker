@@ -1,0 +1,92 @@
+# Truth Detector - Video Analysis Project
+
+A system that analyzes videos to detect inconsistencies between visual content and speech, then fact-checks claims locally.
+
+## Project Structure
+
+```
+truth-detector/
+├── README.md                        # Project documentation
+├── requirements.txt                 # Python dependencies
+├── config/                          # Configuration files
+│   ├── config.yml                   # Main config
+│   └── models.yml                   # Model-specific settings
+├── models/                          # Storage for model weights
+│   ├── yolo/                        # YOLO weights
+│   ├── whisper/                     # Speech recognition model
+│   ├── llm/                         # Your custom LLM
+│   └── embeddings/                  # Embedding models
+├── data/                            # Data storage
+│   ├── knowledge_base/              # Local fact database
+│   └── processed/                   # Processed outputs
+├── src/                             # Source code
+│   ├── yolo_detector.py             # YOLO implementation
+│   ├── speech_recognizer.py         # Speech recognition
+│   ├── inconsistency_detector.py    # Detect visual-speech inconsistencies
+│   ├── fact_checker.py              # Local fact checking logic
+│   ├── knowledge_base.py            # Vector DB for facts
+│   ├── llm_interface.py             # Interface to local LLM
+│   ├── visualizer.py                # Results visualization
+│   └── utils/                       # Utility functions
+├── pipelines/                       # Processing pipelines
+│   ├── full_pipeline.py             # End-to-end processing
+│   └── batch_processor.py           # Batch video processing
+├── scripts/                         # Helper scripts
+│   ├── download_models.py           # Download model weights
+│   ├── build_knowledge_base.py      # Prepare fact database
+│   └── optimize_models.py           # Optimize for local inference
+├── web/                             # Optional web interface
+│   ├── app.py                       # Flask/Streamlit app
+│   └── static/                      # UI assets
+
+
+## Local-First Technology Stack
+
+### Vision Analysis (YOLO)
+- YOLOv8 (or YOLOv5) running locally using Ultralytics
+- Optional ONNX/TensorRT optimization for faster inference
+- Custom training possible on specific inconsistency patterns
+
+### Speech Recognition
+- Whisper model (OpenAI) running completely locally
+- Faster-Whisper implementation for optimized performance
+- Support for speaker diarization
+
+### Fact Database & Knowledge
+- Local vector database (FAISS or Chroma)
+- Pre-populated with factual information from reliable sources
+- Ability to expand knowledge base offline
+
+### Language Model (LLM)
+- Support for running open-source LLMs locally:
+  - Llama 3, Mistral, Gemma or similar compact models
+  - llama.cpp, vLLM, or similar inference engines for optimization
+  - Model quantization for faster performance
+
+### Data Processing
+- Parallel processing capabilities for faster analysis
+- Batched inference for efficiency
+- Memory-efficient streaming for larger videos
+
+## Implementation Approach
+
+1. **Phase 1: Core Local Components**
+   - Set up YOLO for object/scene detection
+   - Implement Whisper for speech transcription
+   - Create pipeline to synchronize visual and speech data
+
+2. **Phase 2: Analysis & Matching**
+   - Build inconsistency detection logic
+   - Develop local fact-checking algorithms
+   - Implement vector similarity for relevant fact retrieval
+
+3. **Phase 3: LLM Integration**
+   - Add support for local LLM inference
+   - Create reasoning pipeline for fact evaluation
+   - Optimize LLM prompts for inconsistency analysis
+
+4. **Phase 4: Optimization & UI**
+   - Optimize for speed and resource usage
+   - Add optional visualization interface
+   - Create output formats for artistic presentation
+

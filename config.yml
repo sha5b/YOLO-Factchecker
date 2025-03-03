@@ -1,0 +1,36 @@
+# YOLO Factchecker Configuration
+
+# YOLO settings
+yolo:
+  model: "yolov8s.pt"  # Using small model as requested
+  confidence_threshold: 0.5
+  img_size: 640
+  sample_rate: 5  # Process every 5th frame
+
+# Speech recognition settings
+vosk:
+  model_name: "vosk-model-small-en-us-0.15"  # Smaller English US model
+  sample_rate: 16000  # Audio sample rate in Hz
+  enable_words: true  # Enable word timestamps
+  language: "en-us"   # Language code
+  alternative_results: 1  # Number of alternative results to return
+
+# Ollama settings
+ollama:
+  base_url: "http://localhost:11434"
+  model: "llama3"
+  temperature: 0.2
+  max_tokens: 1024
+
+# Processing settings
+processing:
+  max_upload_size: 500  # MB
+  extract_metadata: true
+  show_confidence: true
+  highlight_issues: true
+
+# Web interface settings
+web:
+  host: "0.0.0.0"
+  port: 5000
+  debug: true

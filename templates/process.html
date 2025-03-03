@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processing - YOLO Factchecker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <div class="container processing-container">
+        <header>
+            <h1>YOLO Factchecker</h1>
+            <div class="video-info">
+                <span>Processing: {{ video_filename }}</span>
+                <div class="processing-stats" id="processing-stats">
+                    <span id="fps-stat">FPS: --</span>
+                    <span id="progress-stat">Progress: 0%</span>
+                </div>
+            </div>
+        </header>
+        
+        <main class="processing-main">
+            <div class="processing-grid">
+                <!-- Video frame display -->
+                <div class="video-frame-container">
+                    <h2>Video Processing</h2>
+                    <div class="video-frame">
+                        <img id="current-frame" src="{{ url_for('static', filename='img/placeholder.html') }}" alt="Processing frame">
+                        <div class="frame-overlay" id="frame-overlay"></div>
+                    </div>
+                    <div class="frame-controls">
+                        <button id="pause-btn">Pause</button>
+                        <button id="resume-btn" disabled>Resume</button>
+                    </div>
+                </div>
+                
+                <!-- YOLO Detections -->
+                <div class="detections-container">
+                    <h2>YOLO Detections</h2>
+                    <div class="detections-list" id="detections-list">
+                        <div class="loading-indicator">Initializing...</div>
+                    </div>
+                </div>
+                
+                <!-- Speech Transcription -->
+                <div class="transcription-container">
+                    <h2>Speech Transcription</h2>
+                    <div class="transcription-content" id="transcription-content">
+                        <div class="loading-indicator">Initializing speech recognition...</div>
+                    </div>
+                </div>
+                
+                <!-- LLM Analysis -->
+                <div class="llm-container">
+                    <h2>LLM Analysis</h2>
+                    <div class="llm-content" id="llm-content">
+                        <div class="loading-indicator">Waiting for analysis...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="summary-section">
+                <h2>Processing Summary</h2>
+                <div class="summary-content" id="summary-content">
+                    <div class="loading-indicator">Processing in progress...</div>
+                </div>
+                <button id="download-btn" disabled>Download Summary</button>
+            </div>
+        </main>
+        
+        <footer>
+            <p>YOLO Factchecker - Local Video Analysis Tool</p>
+            <a href="/" class="back-link">Back to Home</a>
+        </footer>
+    </div>
+    
+    <script>
+        // Pass session data to JavaScript
+        const sessionId = "{{ session_id }}";
+        const videoPath = "{{ video_path }}";
+    </script>
+    <script src="{{ url_for('static', filename='js/process.js') }}"></script>
+</body>
+</html>
